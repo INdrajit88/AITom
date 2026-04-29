@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useConversation } from '@elevenlabs/react';
-import Character from '@/components/Character';
-import MicButton from '@/components/MicButton';
-import { Flame, MessageCircle, Info, AlertCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useCallback, useEffect } from "react";
+import { useConversation } from "@elevenlabs/react";
+import Character from "@/components/Character";
+import MicButton from "@/components/MicButton";
+import { Flame, MessageCircle, Info, AlertCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Home() {
-  const [mood, setMood] = useState<'happy' | 'angry' | 'sarcastic' | 'roast'>('happy');
+  const [mood, setMood] = useState<
+    "happy" | "angry" | "sarcastic" | "roast" | "surprised" | "giggling"
+  >("happy");
   const [slapCount, setSlapCount] = useState(0);
   const [isRoastMode, setIsRoastMode] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
@@ -16,33 +18,48 @@ export default function Home() {
 
   const conversation = useConversation({
     onConnect: () => {
-      console.log('Connected to ElevenLabs');
+      console.log("Connected to ElevenLabs");
       setErrorMsg(null);
     },
-    onDisconnect: () => console.log('Disconnected from ElevenLabs'),
+    onDisconnect: () => console.log("Disconnected from ElevenLabs"),
     onMessage: (message) => {
-      console.log('Message from AI:', message);
-      if (typeof message === 'string') setLastMessage(message);
-      else if (typeof message === 'object' && message !== null && 'message' in message) {
+      console.log("Message from AI:", message);
+      if (typeof message === "string") setLastMessage(message);
+      else if (
+        typeof message === "object" &&
+        message !== null &&
+        "message" in message
+      ) {
         setLastMessage((message as any).message);
       }
     },
     onError: (error) => {
-      console.error('ElevenLabs Error:', error);
-      setErrorMsg(typeof error === 'string' ? error : 'Connection failed. Check your Agent ID.');
+      console.error("ElevenLabs Error:", error);
+      setErrorMsg(
+        typeof error === "string"
+          ? error
+          : "Connection failed. Check your Agent ID.",
+      );
     },
   });
 
-  const { status, startSession, endSession, isSpeaking, sendContextualUpdate } = conversation;
-  const isConnected = status === 'connected';
-  const isConnecting = status === 'connecting';
+  const {
+    status,
+    startSession,
+    endSession,
+    isSpeaking,
+    sendContextualUpdate,
+    sendUserMessage,
+  } = conversation;
+  const isConnected = status === "connected";
+  const isConnecting = status === "connecting";
   const isTalking = isSpeaking;
 
   // Sync mood and slapCount with the agent mid-session via string context
   useEffect(() => {
     if (isConnected && sendContextualUpdate) {
-      const updateMsg = `[Context Update] Mood: ${isRoastMode ? 'roast' : mood}, Slaps: ${slapCount}.`;
-      console.log('Sending contextual update:', updateMsg);
+      const updateMsg = `[Context Update] Mood: ${isRoastMode ? "roast" : mood}, Slaps: ${slapCount}.`;
+      console.log("Sending contextual update:", updateMsg);
       sendContextualUpdate(updateMsg);
     }
   }, [mood, slapCount, isRoastMode, isConnected, sendContextualUpdate]);
@@ -51,17 +68,72 @@ export default function Home() {
   const toggleRoastMode = () => {
     const nextRoastMode = !isRoastMode;
     setIsRoastMode(nextRoastMode);
-    setMood(nextRoastMode ? 'roast' : 'happy');
+    setMood(nextRoastMode ? "roast" : "happy");
   };
+
+  // Handle Touch
+  const handleTouch = useCallback(
+    (part: string) => {
+      let reactionPrompt = "";
+      let newMood: typeof mood = "happy";
+
+      switch (part) {
+        case "head":
+          reactionPrompt =
+            "User just gently petted your head. Purr and say something short and cute.";
+          newMood = "happy";
+          break;
+        case "belly":
+          reactionPrompt =
+            "User just poked your belly. Giggle and say something playfully annoyed.";
+          newMood = "giggling";
+          break;
+        case "paw_left":
+        case "paw_right":
+          reactionPrompt =
+            "User just touched your paw. Meow softly and say a short greeting.";
+          newMood = "surprised";
+          break;
+        case "foot_left":
+        case "foot_right":
+          reactionPrompt =
+            "User just tickled your foot. Laugh out loud and tell them to stop!";
+          newMood = "giggling";
+          break;
+        default:
+          reactionPrompt =
+            "User just tapped you. Give a short, funny reaction.";
+          newMood = "surprised";
+      }
+
+      if (isRoastMode) {
+        reactionPrompt = `User just touched your ${part.replace("_", " ")}. Roast them with a short, funny insult!`;
+        newMood = "roast";
+      } else {
+        setMood(newMood);
+        // Reset mood after 3 seconds
+        setTimeout(() => {
+          setMood("happy");
+        }, 3000);
+      }
+
+      if (isConnected && sendUserMessage) {
+        sendUserMessage(reactionPrompt);
+      }
+    },
+    [isRoastMode, isConnected, sendUserMessage],
+  );
 
   // Handle Slap
   const handleSlap = useCallback(() => {
     // Procedural beep sound
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = new (
+        window.AudioContext || (window as any).webkitAudioContext
+      )();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'square';
+      osc.type = "square";
       osc.frequency.setValueAtTime(150, ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.1);
       gain.gain.setValueAtTime(0.1, ctx.currentTime);
@@ -72,17 +144,31 @@ export default function Home() {
       osc.stop(ctx.currentTime + 0.1);
     } catch (e) {}
 
-    setSlapCount((prev) => prev + 1);
-    setMood('angry');
+    setSlapCount((prev) => {
+      const newCount = prev + 1;
+      if (newCount >= 2 && !isRoastMode) {
+        setIsRoastMode(true);
+        setMood("roast");
+      } else {
+        setMood("angry");
+      }
+      return newCount;
+    });
+
+    if (isConnected && sendUserMessage) {
+      sendUserMessage(
+        "User just slapped you! Say 'Ouch!' or give a short, angry verbal reaction right now!",
+      );
+    }
 
     // Reset mood after 3 seconds if not in roast mode
     setTimeout(() => {
       setMood((current) => {
-        if (current === 'angry') return isRoastMode ? 'roast' : 'sarcastic';
+        if (current === "angry") return isRoastMode ? "roast" : "sarcastic";
         return current;
       });
     }, 3000);
-  }, [isRoastMode]);
+  }, [isRoastMode, isConnected, sendUserMessage]);
 
   const toggleConversation = useCallback(async () => {
     if (isConnected) {
@@ -90,7 +176,7 @@ export default function Home() {
     } else {
       setErrorMsg(null);
       const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
-      
+
       if (!agentId) {
         setErrorMsg("Missing NEXT_PUBLIC_ELEVENLABS_AGENT_ID");
         return;
@@ -98,30 +184,32 @@ export default function Home() {
 
       try {
         // Try to get a signed URL first
-        const response = await fetch('/api/get-signed-url');
+        const response = await fetch("/api/get-signed-url");
         const data = await response.json();
 
         const sessionConfig = {
           dynamicVariables: {
-            mood: isRoastMode ? 'roast' : mood,
+            mood: isRoastMode ? "roast" : mood,
             slapCount: slapCount.toString(),
-          }
+          },
         };
 
         if (response.ok && data.signedUrl) {
           await startSession({
             signedUrl: data.signedUrl,
-            ...sessionConfig
+            ...sessionConfig,
           });
         } else {
           await startSession({
             agentId,
-            ...sessionConfig
+            ...sessionConfig,
           });
         }
       } catch (error) {
-        console.error('Failed to start conversation:', error);
-        setErrorMsg("Connection failed. Ensure Agent is 'Public' or API Key is set.");
+        console.error("Failed to start conversation:", error);
+        setErrorMsg(
+          "Connection failed. Ensure Agent is 'Public' or API Key is set.",
+        );
       }
     }
   }, [isConnected, startSession, endSession, mood, slapCount, isRoastMode]);
@@ -134,15 +222,15 @@ export default function Home() {
           <MessageCircle className="w-6 h-6" />
           AI Tom
         </h1>
-        <button 
+        <button
           onClick={toggleRoastMode}
           className={`px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors ${
-            isRoastMode 
-              ? 'bg-orange-500 text-white shadow-lg' 
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            isRoastMode
+              ? "bg-orange-500 text-white shadow-lg"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
           }`}
         >
-          <Flame className={`w-4 h-4 ${isRoastMode ? 'animate-pulse' : ''}`} />
+          <Flame className={`w-4 h-4 ${isRoastMode ? "animate-pulse" : ""}`} />
           Roast Mode
         </button>
       </div>
@@ -151,7 +239,7 @@ export default function Home() {
       <div className="flex-1 flex flex-col items-center justify-center gap-8 w-full max-w-md">
         {/* Error Alert */}
         {errorMsg && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             className="bg-red-50 text-red-600 px-4 py-2 rounded-xl flex items-center gap-2 text-sm border border-red-100"
@@ -179,7 +267,12 @@ export default function Home() {
         </div>
 
         {/* Character */}
-        <Character isTalking={isTalking} mood={mood} onSlap={handleSlap} />
+        <Character
+          isTalking={isTalking}
+          mood={mood}
+          onTouch={handleTouch}
+          onSlap={handleSlap}
+        />
 
         {/* Stats */}
         <div className="flex gap-4">
@@ -194,12 +287,12 @@ export default function Home() {
 
       {/* Footer Controls */}
       <div className="w-full max-w-md bg-white p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center gap-4">
-        <MicButton 
-          isConnected={isConnected} 
-          isConnecting={isConnecting} 
-          onToggle={toggleConversation} 
+        <MicButton
+          isConnected={isConnected}
+          isConnecting={isConnecting}
+          onToggle={toggleConversation}
         />
-        
+
         {!isConnected && (
           <p className="text-xs text-slate-400 flex items-center gap-1">
             <Info className="w-3 h-3" />

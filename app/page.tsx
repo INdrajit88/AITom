@@ -1,65 +1,218 @@
-import Image from "next/image";
+"use client";
+
+import React, { useState, useCallback, useEffect } from 'react';
+import { useConversation } from '@elevenlabs/react';
+import Character from '@/components/Character';
+import MicButton from '@/components/MicButton';
+import { Flame, MessageCircle, Info, AlertCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Home() {
+  const [mood, setMood] = useState<'happy' | 'angry' | 'sarcastic' | 'roast'>('happy');
+  const [slapCount, setSlapCount] = useState(0);
+  const [isRoastMode, setIsRoastMode] = useState(false);
+  const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const conversation = useConversation({
+    onConnect: () => {
+      console.log('Connected to ElevenLabs');
+      setErrorMsg(null);
+    },
+    onDisconnect: () => console.log('Disconnected from ElevenLabs'),
+    onMessage: (message) => {
+      console.log('Message from AI:', message);
+      if (typeof message === 'string') setLastMessage(message);
+      else if (typeof message === 'object' && message !== null && 'message' in message) {
+        setLastMessage((message as any).message);
+      }
+    },
+    onError: (error) => {
+      console.error('ElevenLabs Error:', error);
+      setErrorMsg(typeof error === 'string' ? error : 'Connection failed. Check your Agent ID.');
+    },
+  });
+
+  const { status, startSession, endSession, isSpeaking, sendContextualUpdate } = conversation;
+  const isConnected = status === 'connected';
+  const isConnecting = status === 'connecting';
+  const isTalking = isSpeaking;
+
+  // Sync mood and slapCount with the agent mid-session via string context
+  useEffect(() => {
+    if (isConnected && sendContextualUpdate) {
+      const updateMsg = `[Context Update] Mood: ${isRoastMode ? 'roast' : mood}, Slaps: ${slapCount}.`;
+      console.log('Sending contextual update:', updateMsg);
+      sendContextualUpdate(updateMsg);
+    }
+  }, [mood, slapCount, isRoastMode, isConnected, sendContextualUpdate]);
+
+  // Toggle Roast Mode
+  const toggleRoastMode = () => {
+    const nextRoastMode = !isRoastMode;
+    setIsRoastMode(nextRoastMode);
+    setMood(nextRoastMode ? 'roast' : 'happy');
+  };
+
+  // Handle Slap
+  const handleSlap = useCallback(() => {
+    // Procedural beep sound
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(150, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch (e) {}
+
+    setSlapCount((prev) => prev + 1);
+    setMood('angry');
+
+    // Reset mood after 3 seconds if not in roast mode
+    setTimeout(() => {
+      setMood((current) => {
+        if (current === 'angry') return isRoastMode ? 'roast' : 'sarcastic';
+        return current;
+      });
+    }, 3000);
+  }, [isRoastMode]);
+
+  const toggleConversation = useCallback(async () => {
+    if (isConnected) {
+      await endSession();
+    } else {
+      setErrorMsg(null);
+      const agentId = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID;
+      
+      if (!agentId) {
+        setErrorMsg("Missing NEXT_PUBLIC_ELEVENLABS_AGENT_ID");
+        return;
+      }
+
+      try {
+        // Try to get a signed URL first
+        const response = await fetch('/api/get-signed-url');
+        const data = await response.json();
+
+        const sessionConfig = {
+          dynamicVariables: {
+            mood: isRoastMode ? 'roast' : mood,
+            slapCount: slapCount.toString(),
+          }
+        };
+
+        if (response.ok && data.signedUrl) {
+          await startSession({
+            signedUrl: data.signedUrl,
+            ...sessionConfig
+          });
+        } else {
+          await startSession({
+            agentId,
+            ...sessionConfig
+          });
+        }
+      } catch (error) {
+        console.error('Failed to start conversation:', error);
+        setErrorMsg("Connection failed. Ensure Agent is 'Public' or API Key is set.");
+      }
+    }
+  }, [isConnected, startSession, endSession, mood, slapCount, isRoastMode]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="flex min-h-screen flex-col items-center justify-between p-8 bg-slate-50 font-sans">
+      {/* Header */}
+      <div className="w-full max-w-md flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+        <h1 className="text-xl font-bold text-blue-600 flex items-center gap-2">
+          <MessageCircle className="w-6 h-6" />
+          AI Tom
+        </h1>
+        <button 
+          onClick={toggleRoastMode}
+          className={`px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-colors ${
+            isRoastMode 
+              ? 'bg-orange-500 text-white shadow-lg' 
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <Flame className={`w-4 h-4 ${isRoastMode ? 'animate-pulse' : ''}`} />
+          Roast Mode
+        </button>
+      </div>
+
+      {/* Main Game Area */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-8 w-full max-w-md">
+        {/* Error Alert */}
+        {errorMsg && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-red-50 text-red-600 px-4 py-2 rounded-xl flex items-center gap-2 text-sm border border-red-100"
+          >
+            <AlertCircle className="w-4 h-4" />
+            {errorMsg}
+          </motion.div>
+        )}
+
+        {/* Chat Bubble */}
+        <div className="h-24 w-full flex items-center justify-center">
+          <AnimatePresence mode="wait">
+            {isTalking && lastMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-white px-6 py-3 rounded-2xl shadow-md border border-slate-100 text-slate-700 text-center font-medium max-w-xs relative"
+              >
+                {lastMessage}
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-r border-b border-slate-100"></div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Character */}
+        <Character isTalking={isTalking} mood={mood} onSlap={handleSlap} />
+
+        {/* Stats */}
+        <div className="flex gap-4">
+          <div className="bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100 text-sm font-medium text-slate-500">
+            Mood: <span className="text-blue-600 capitalize">{mood}</span>
+          </div>
+          <div className="bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100 text-sm font-medium text-slate-500">
+            Slaps: <span className="text-red-500">{slapCount}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Controls */}
+      <div className="w-full max-w-md bg-white p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center gap-4">
+        <MicButton 
+          isConnected={isConnected} 
+          isConnecting={isConnecting} 
+          onToggle={toggleConversation} 
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+        
+        {!isConnected && (
+          <p className="text-xs text-slate-400 flex items-center gap-1">
+            <Info className="w-3 h-3" />
+            Make sure to allow microphone access
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        )}
+      </div>
+
+      {/* Background decoration */}
+      <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden">
+        <div className="absolute top-1/4 -left-20 w-64 h-64 bg-blue-100 rounded-full blur-3xl opacity-50"></div>
+        <div className="absolute bottom-1/4 -right-20 w-64 h-64 bg-purple-100 rounded-full blur-3xl opacity-50"></div>
+      </div>
+    </main>
   );
 }

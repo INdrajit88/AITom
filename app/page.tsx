@@ -30,7 +30,7 @@ export default function Home() {
         message !== null &&
         "message" in message
       ) {
-        setLastMessage((message as any).message);
+        setLastMessage((message as { message: string }).message);
       }
     },
     onError: (error) => {
@@ -129,7 +129,9 @@ export default function Home() {
     // Procedural beep sound
     try {
       const ctx = new (
-        window.AudioContext || (window as any).webkitAudioContext
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext
       )();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -142,7 +144,9 @@ export default function Home() {
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.1);
-    } catch (e) {}
+    } catch {
+      // Ignore audio context errors
+    }
 
     setSlapCount((prev) => {
       const newCount = prev + 1;

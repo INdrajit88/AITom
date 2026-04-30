@@ -4,8 +4,8 @@ import React, { useState, useCallback, useEffect } from "react";
 import { useConversation } from "@elevenlabs/react";
 import Character from "@/components/Character";
 import MicButton from "@/components/MicButton";
-import { Flame, MessageCircle, Info, AlertCircle } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Flame, MessageCircle, Info, AlertCircle, AtSign } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function Home() {
   const [mood, setMood] = useState<
@@ -13,7 +13,7 @@ export default function Home() {
   >("happy");
   const [slapCount, setSlapCount] = useState(0);
   const [isRoastMode, setIsRoastMode] = useState(false);
-  const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const [socialProfile, setSocialProfile] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const conversation = useConversation({
@@ -22,17 +22,6 @@ export default function Home() {
       setErrorMsg(null);
     },
     onDisconnect: () => console.log("Disconnected from ElevenLabs"),
-    onMessage: (message) => {
-      console.log("Message from AI:", message);
-      if (typeof message === "string") setLastMessage(message);
-      else if (
-        typeof message === "object" &&
-        message !== null &&
-        "message" in message
-      ) {
-        setLastMessage((message as { message: string }).message);
-      }
-    },
     onError: (error) => {
       console.error("ElevenLabs Error:", error);
       setErrorMsg(
@@ -174,6 +163,18 @@ export default function Home() {
     }, 3000);
   }, [isRoastMode, isConnected, sendUserMessage]);
 
+  const handleRoastProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!socialProfile.trim() || !isConnected || !sendUserMessage) return;
+
+    setIsRoastMode(true);
+    setMood("roast");
+    sendUserMessage(
+      `The user wants you to roast them based on their social media profile: ${socialProfile}. Take a look at their profile captions and roast them about it! Give them your best, funniest, and sassiest roast! Make it hurt (but keep it fun)!`,
+    );
+    setSocialProfile(""); // Clear input
+  };
+
   const toggleConversation = useCallback(async () => {
     if (isConnected) {
       await endSession();
@@ -253,30 +254,15 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* Chat Bubble */}
-        <div className="h-24 w-full flex items-center justify-center">
-          <AnimatePresence mode="wait">
-            {isTalking && lastMessage && (
-              <motion.div
-                initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-white px-6 py-3 rounded-2xl shadow-md border border-slate-100 text-slate-700 text-center font-medium max-w-xs relative"
-              >
-                {lastMessage}
-                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white rotate-45 border-r border-b border-slate-100"></div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
         {/* Character */}
-        <Character
-          isTalking={isTalking}
-          mood={mood}
-          onTouch={handleTouch}
-          onSlap={handleSlap}
-        />
+        <div className="mt-8">
+          <Character
+            isTalking={isTalking}
+            mood={mood}
+            onTouch={handleTouch}
+            onSlap={handleSlap}
+          />
+        </div>
 
         {/* Stats */}
         <div className="flex gap-4">
@@ -291,6 +277,28 @@ export default function Home() {
 
       {/* Footer Controls */}
       <div className="w-full max-w-md bg-white p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center gap-4">
+        {isConnected && (
+          <form onSubmit={handleRoastProfile} className="w-full flex gap-2">
+            <div className="relative flex-1">
+              <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={socialProfile}
+                onChange={(e) => setSocialProfile(e.target.value)}
+                placeholder="Enter social profile to roast..."
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!socialProfile.trim()}
+              className="px-4 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl font-medium transition-colors"
+            >
+              Roast!
+            </button>
+          </form>
+        )}
+
         <MicButton
           isConnected={isConnected}
           isConnecting={isConnecting}
